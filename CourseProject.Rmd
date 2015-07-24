@@ -1,0 +1,119 @@
+---
+title: "Practical Machine Learning Course Project"
+date: "July 23, 2015"
+output: html_document
+---
+ 
+*Setting up a few things...*   
+```{r}
+setwd("C:/Users/An/Documents/Study/Coursera/Practical Machine Learning/Course Project/")
+library(dplyr)   
+library(ggplot2)   
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+set.seed(60640)
+```
+ 
+**Read and partition the data**    
+```{r}
+training <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), na.strings=c("NA","#DIV/0!",""))
+
+testing <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), na.strings=c("NA","#DIV/0!",""))
+```
+ 
+Partition the training data into training1 and validation:
+```{r}
+trainingIndex <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+training1 <- training[trainingIndex, ] 
+validation <- training[-trainingIndex, ]
+```
+ 
+Let's see the size of training1 and validation:
+```{r}
+dim(training1)
+dim(validation)
+```
+ 
+Take a quick look at the training data:
+```{r}
+str(training1)
+```
+
+**Select predictors**    
+There is a lot of variables! We will first fit a Classification Decision Tree to see which variables are important as predictors of "classe". Note that this Classification Tree is not the final model (it may not as accurate as Random Forest). However, this Classication Tree uses much less computing resoures than Random Forest so we use it to give us a glimpse of which predictors are important.
+```{r}
+# Fit one Classification Tree with "classe" as target and the rest (except first column, which is ID)
+# as predictors. 
+fit <- rpart(classe ~ ., data=training1[,-1], cp=10^(-6))
+
+# Put the tree's variable.importance into a vector called "predictors"
+predictors <- fit$variable.importance
+
+# How many predictors are important?
+length(predictors)
+
+# What are the names and importance of those predictors?
+predictors
+
+# Put those important predictors' names into a vector
+predictors.names <- names(predictors)
+```
+ 
+From the above Classification Tree, we know that only 57 predictors out of 158 are important and we have their names! Let's revise the training and validation datasets so that they only have those 57 predictors and the target (classe), and testing dataset so that it only has 57 predictors.
+```{r}
+keep <- c(predictors.names,"classe")
+training1 <- training1[keep]
+validation <- validation[keep]
+testing <- testing[predictors.names]
+
+# Double check the new dimensions of training1, validation and testing data
+dim(training1)
+dim(validation)
+dim(testing)
+```
+ 
+In order to ensure that we can use our trained model to predict the testing data, we need to coerce all predictors with same name to the same data type.
+```{r}
+testing <- rbind(training1[2, -58] , testing)
+testing <- testing[-1,]
+```
+ 
+**Develop predictive models**    
+Now that we know only 57 predictors are useful to predict classe, let's develop a Random Forest model to predict classe:
+```{r}
+model <- randomForest(classe ~. , data=training1)
+```
+ 
+Use the model to predict classe in validation data:
+```{r}
+predictions <- predict(model, validation, type = "class")
+```
+ 
+Create a confusion matrix to see how good is our predictions:
+```{r}
+confusionMatrix(predictions, validation$classe)
+```
+ 
+Great result! Accuracy 99.9%!
+ 
+**Create predictions for testing set**
+```{r}
+# Predict testing set
+testingPredictions <- predict(model, testing, type = "class")
+
+# Write each prediction into a file
+write_prediction <- function(result){
+  n = length(result)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(result[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+write_prediction(testingPredictions)
+```
+
